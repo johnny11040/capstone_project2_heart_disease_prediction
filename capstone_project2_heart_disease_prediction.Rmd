@@ -1,0 +1,217 @@
+---
+title: "Heart Disease Prediction"
+output:
+  word_document: default
+  html_document: default
+---
+
+## Executive Summary
+
+This report describes the analyses conducted to predict whether patients have heart disease or not. Data used is the UCI Heart Disease dataset obtained from Kaggle -  (<https://www.kaggle.com/ronitf/heart-disease-uci>).
+
+The dataset contained 13 independent variables and one binary target variable. Among the independent variables, there were 8 categorical and 5 continuous variables. 
+
+First, exploratory analyses were conducted to get a feel for the data and visualize the differences between patients who have heart disease and those who don't on each of the independent variables. 
+
+Then, the dataset was split into train and test sets and a logistic regression model was built and improved using stepwise backward elimination. Predictions were made on the test set and performance of the model was evaluated. Performance measures used are AUC, accuracy, sensitivity and specificity.
+The receiver-operator characteristics curve was also plotted. 
+
+The AUC obtained with the logistic regression model was: **0.933** \
+Other performance measures were - \
+Accuracy: **0.902** \
+Sensitivity: **0.8929** \
+Specificity: **0.9091**
+
+## Analysis
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org"); library(tidyverse)
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org"); library(caret)
+if(!require("ROCR")) install.packages("ROCR", repos = "http://cran.us.r-project.org"); library(ROCR)
+
+# Load data 
+
+# Set working directory in which data is stored here
+setwd('')
+data <- read.csv('heart.csv')
+names(data)[1] <- 'age'
+
+# Converting to factor
+data$sex <- as.factor(data$sex)
+data$cp <- as.factor(data$cp)
+data$fbs <- as.factor(data$fbs)
+data$restecg <- as.factor(data$restecg)
+data$exang <- as.factor(data$exang)
+data$slope <- as.factor(data$slope)
+data$ca <- as.factor(data$ca)
+data$thal <- as.factor(data$thal)
+data$target <- as.factor(data$target)
+
+```
+The heart disease dataset contains the following independent variables - \
+
+1. age: age of the patient
+2. sex: sex of the patient
+3. cp: chest pain type
+4. trestbps: resting blood pressure
+5. chol: serum cholestoral in mg/dl 
+6. fbs: fasting blood sugar > 120 mg/dl
+7. restecg: resting electrocardiographic results (values 0,1,2)
+8. thalach: maximum heart rate achieved 
+9. exang: exercise induced angina 
+10. oldpeak: ST depression induced by exercise relative to rest 
+11. slope: the slope of the peak exercise ST segment 
+12. ca: number of major vessels (0-3) colored by flourosopy 
+13. thal: normal, fixed defect, reversable defect
+
+Structure of the dataset is as follows - 
+
+```{r}
+str(data)
+```
+
+Analysis of the heart disease dataset is split into two parts - \
+
+1. Exploratory Analyses \
+2. Predictive Modeling
+
+In the exploratory analyses part, it is first ensured that there are no missing values in the data. Then, summary statistics of all the variables are analyzed. Bivariate analyses between the independent and target variables are conducted and plotted. Specifically, for categorical independent variables, a barplot showing the split of 'target' is shown, while for continuous independent variables, a frequency histogram showing the difference in distributions for the two 'target' categories is shown. Examples are shown below - 
+
+Barplot for categorical variable *sex*: 
+
+```{r}
+barplot(table(data$target, data$sex), 
+        main = 'Split of target by sex buckets', 
+        xlab = 'sex', ylab = 'Count',
+        legend.text = c('Target 0', 'Target 1'), args.legend = c(x=1,y=200))
+
+```
+
+Histogram for continuous variable *age*:
+
+```{r echo=T, fig.show='hide'}
+p1 <- hist(data$age[data$target==0]) 
+p2 <- hist(data$age[data$target==1])
+
+```
+
+```{r}
+plot(p1, col=rgb(0,0,1,1/4), xlim=c(0,100), main='Distribution of age by target buckets', xlab='Age')
+plot(p2, col=rgb(0,1,0,1/4), xlim=c(0,100), add=T)
+
+```
+
+In the predictive analysis part, the dataset is first split into train and test sets such that a random 20% of the data is captured in the test set and the rest are used to train the model.
+
+```{r}
+set.seed(1)
+test_index <- createDataPartition(y = data$target, times = 1, p = 0.2, list = FALSE)
+train_data <- data[-test_index,]
+test_data <- data[test_index,]
+
+nrow(train_data)
+nrow(test_data)
+
+```
+
+It is recognized that this is a binary classification problem and the logistic regression model is chosen. Stepwise backward elimination method is used to select variables. The selection criteria is AIC (Akaike Information Criteria) and p-values are used to detect insignificant variables at each step. 
+
+```{r}
+model <- glm(target~., data = train_data, family = binomial(link = 'logit'))
+select_vars_model <- step(model, trace=0)
+summary(select_vars_model)
+
+```
+
+Lastly, the trained logistic regression model is used to make predictions on the test set. ROC curve is plotted and AUC (area under the curve) is calculated to measure performance. Also, probability threshold of 0.5 is set, confusion matrix is viewed alongside key performance measures like Sensitivity and Specificity. 
+
+```{r fig.show='hide'}
+test_predicted <- predict(select_vars_model, test_data, type='response')
+
+# ROC curve and AUC
+ROCRpred = prediction(test_predicted,test_data$target)
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, main='ROC curve')
+auc <- attributes(performance(ROCRpred, 'auc'))$y.values[[1]]
+
+# Confusion Matrix for probability threshold of 0.5
+predClass <- as.factor(ifelse(test_predicted>=0.5,1,0))
+con_mat <- confusionMatrix(test_data$target, predClass)
+
+```
+
+## Results
+
+In the preprocessing stage, it was observed that there are no missing values in the data and it is useable as is. 
+
+```{r}
+# Check if there are any blank values in the dataset
+sapply(data, function(x) sum(is.na(x))) # No NA values
+
+```
+
+\
+In the exploratory analysis stage, summary statistics of the variables were obtained to see how they were distributed. It was observed that there was no major class imbalance in the target variable as 165 instances corresponded to heart disease and 138 corresponded to no heart disease.
+
+```{r}
+# View summary of data 
+summary(data)
+
+barplot(table(data$target), main='Split of target variable', xlab='target variable', ylab='Count of patients')
+```
+
+Bivariate analyses showed that certain variables may highly important to predict heart disease as they showed large variation between patients with and without heart disease. These variables are - \
+cp, exang, slope, ca, thal, thalach
+
+It can be seen from below plot that patients with chest pain type cp=0 are less likely to have heart disease than those with chest pain types cp=1,2 or 3
+
+```{r}
+barplot(table(data$target, data$cp), 
+        main = 'Split of target by cp buckets', 
+        xlab = 'cp', ylab = 'Count',
+        legend.text = c('Target 0', 'Target 1'), args.legend = c(x=5,y=150))
+
+```
+
+Similarly, it can be seen from below plot that patients with heart disease tend to have higher maximum heart rate than those without heart disease.  
+
+```{r fig.show='hide'}
+p1 <- hist(data$thalach[data$target==0]) 
+p2 <- hist(data$thalach[data$target==1])
+```
+```{r}
+plot(p2, col=rgb(0,1,0,1/4), xlim=c(50,250), main='Distribution of thalach by target buckets', xlab='thalach')
+plot(p1, col=rgb(0,0,1,1/4), xlim=c(50,250), add=T)
+
+legend(x=190, y=30, legend=c('Target 0', 'Target 1'), pch=15, col=c("blue", "green"))
+```
+
+The logistic regression model fit the data well. The base model gave an AIC of **200.28**, but the best AIC obtained after variable selection was **192.54**.
+\
+The ROC curve obtained and the AUC are as follows - 
+
+```{r}
+# ROC curve and AUC
+plot(ROCRperf, main='ROC curve')
+auc <- attributes(performance(ROCRpred, 'auc'))$y.values[[1]]
+auc
+```
+
+The confusion matrix showed that 55 of the 61 instances in the test set were correctly classified at a probability threshold of 0.5. Also, sensitivity was **0.893** and specificity was **0.909**. 
+
+```{r}
+# Confusion Matrix
+confusionMatrix(test_data$target, predClass)
+```
+
+## Conclusion
+
+The UCI Heart Disease dataset obtained from Kaggle was used to build a logistic regression based predictive model to detect whether a patient has heart disease or not. 
+
+The best model performance was achieved after variable selection using stepwise backward elimination. It was determined that variables such as *restecg*, *fbs*, *age*, *chol* and *oldpeak* were not critical to predicting heart disease. The most significant variables were *ca*, *cp* and *sex*. 
+
+The final model had an accuracy of over 90% with a sensitivity of 89% and specificity of 91%. Sensitivity is the percentage of positive cases that are accurately captured. Any positive case that is incorrectly classified as a negative can have adverse effects on the diagnosis and thus on subsequent therapy. Therefore, there is scope to increase the sensitivity further, perhaps with the use of more advanced algorithms like Random Forest or SVM. 
+
+All in all, logistic regression is a good starting point to predict heart disease among patients. 
